@@ -162,28 +162,6 @@ def instantiate_estimator_tool(
     ...     params_list=[{}, {"order": [1, 1, 1]}],
     ... )
     """
-    Create an estimator instance and return a handle.
-
-    Args:
-        estimator: Name of the estimator class (e.g., "ARIMA")
-        params: Optional parameters for the estimator
-
-    Returns:
-        Dictionary with:
-        - success: bool
-        - handle: Unique handle ID string
-        - estimator: Name of the estimator
-        - params: Parameters used
-        - warnings: List of any validation warnings
-
-    Example:
-        >>> instantiate_estimator_tool("ARIMA", {"order": [1, 1, 1]})
-        {
-            "success": True,
-            "handle": "est_abc123def456",
-            "estimator": "ARIMA",
-            "params": {"order": [1, 1, 1]}
-        }
 
     if estimator is None and components is None:
         return {
@@ -192,6 +170,12 @@ def instantiate_estimator_tool(
                 "Either 'estimator' (single estimator name) or 'components' "
                 "(list of estimator names for a pipeline) is required."
             ),
+        }
+
+    if estimator is not None and components is not None:
+        return {
+            "success": False,
+            "error": "Provide either 'estimator' or 'components', not both.",
         }
 
     # Convert single-estimator form into the canonical list form
