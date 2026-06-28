@@ -314,22 +314,20 @@ Each file implements one or more MCP tools that LLMs can call.
 
 #### `instantiate.py`
 **Tools**:
-1. **`instantiate_estimator_tool(estimator, params)`**
-   - Calls `executor.instantiate(estimator, params)`
+1. **`instantiate_estimator_tool(estimator, params, components, params_list)`** ⭐
+   - Unified tool for both single estimators and pipelines
+   - Pass ``estimator`` (+ ``params``) for a single estimator
+   - Pass ``components`` (+ ``params_list``) for a pipeline
+   - Solves the "steps problem" for pipelines
    - Returns handle
 
-2. **`instantiate_pipeline_tool(components, params_list)`** ⭐
-   - Calls `executor.instantiate_pipeline(components, params_list)`
-   - Solves the "steps problem"
-   - Returns single handle for entire pipeline
-
-3. **`release_handle_tool(handle)`**
+2. **`release_handle_tool(handle)`**
    - Frees memory for a handle
 
-4. **`list_handles_tool()`**
+3. **`list_handles_tool()`**
    - Lists all active handles
 
-5. **`load_model_tool(path)`**
+4. **`load_model_tool(path)`**
    - Loads a previously saved model via MLflow
 
 #### `fit_predict.py`
@@ -593,7 +591,7 @@ LLM → fit_predict("est_abc123", "airline", 12)
 4. **Executes** real ML workflows on real data
 5. **Translates** between JSON (LLM) and Python (sktime)
 
-**Key Innovation**: The `instantiate_pipeline` tool solves the "steps problem", enabling LLMs to create complex pipelines with a single JSON-RPC call.
+**Key Innovation**: The unified `instantiate_estimator` tool solves the "steps problem", enabling LLMs to create both single estimators and complex pipelines with a single JSON-RPC call.
 
 **Architecture Highlights**:
 - Clean separation of concerns (registry, composition, runtime, tools)
