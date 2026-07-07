@@ -32,6 +32,7 @@ from sktime_mcp.tools.list_available_data import list_available_data_tool
 from sktime_mcp.tools.query_registry import (
     query_registry_tool,
 )
+from sktime_mcp.tools.run_command import run_command_tool
 from sktime_mcp.tools.save_data import save_data_tool
 from sktime_mcp.tools.save_model import save_model_tool
 from sktime_mcp.tools.split_data import split_data_tool
@@ -62,4 +63,5 @@ __all__ = [
     "check_job_status_tool",
     "list_jobs_tool",
     "cancel_job_tool",
+    "run_command_tool",
 ]
