@@ -29,6 +29,7 @@ from sktime_mcp.tools.job_tools import (
     list_jobs_tool,
 )
 from sktime_mcp.tools.list_available_data import list_available_data_tool
+from sktime_mcp.tools.plotting import plot_series_tool
 from sktime_mcp.tools.query_registry import (
     query_registry_tool,
 )
@@ -63,5 +64,9 @@ __all__ = [
     "check_job_status_tool",
     "list_jobs_tool",
     "cancel_job_tool",
+<<<<<<< feature/plot-series
+    "plot_series_tool",
+=======
     "run_command_tool",
+>>>>>>> main
 ]

@@ -70,6 +70,7 @@ from sktime_mcp.tools.save_data import save_data_tool
 from sktime_mcp.tools.save_model import save_model_tool
 from sktime_mcp.tools.split_data import split_data_tool
 from sktime_mcp.tools.transform_data import transform_data_tool
+from sktime_mcp.tools.plotting import plot_series_tool
 
 
 # ---------------------------------------------------------------------------
@@ -720,6 +721,65 @@ async def list_tools() -> list[Tool]:
                 "required": ["data_handle", "path"],
             },
         ),
+        # -- Visualization ---------------------------------------------------
+        Tool(
+            name="plot_series",
+            description=(
+                "Plot one or more time series natively. "
+                "Can save the plot to a specified path as a PNG file or return it as a base64 string."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "data_handles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of data handle IDs to plot (e.g., train, test, forecasts).",
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of labels corresponding to each data handle.",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Optional title for the plot.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Optional local file path to save the plot (e.g., '/tmp/plot.png'). If omitted, returns base64.",
+                    },
+                    "figsize": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Figure size as [width, height] in inches (default: [12, 6]).",
+                    },
+                    "dpi": {
+                        "type": "integer",
+                        "description": "Resolution in dots per inch (default: 150).",
+                        "default": 150,
+                    },
+                    "markers": {
+                        "description": "Marker style(s) for data points (e.g., 'o', ['.', 'x']).",
+                    },
+                    "x_label": {
+                        "type": "string",
+                        "description": "Custom x-axis label.",
+                    },
+                    "y_label": {
+                        "type": "string",
+                        "description": "Custom y-axis label.",
+                    },
+                    "image_format": {
+                        "type": "string",
+                        "description": "Image output format: 'png' (default), 'svg', or 'webp'.",
+                        "enum": ["png", "svg", "webp"],
+                        "default": "png",
+                    },
+                },
+                "required": ["data_handles"],
+            },
+        ),
         # -- Export / Persistence --------------------------------------------
         Tool(
             name="export_code",
@@ -1019,6 +1079,21 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             from sktime_mcp.tools.format_tools import auto_format_on_load_tool
 
             result = auto_format_on_load_tool(arguments.get("enabled", True))
+
+        # -- Visualization ---------------------------------------------------
+        elif name == "plot_series":
+            result = plot_series_tool(
+                data_handles=arguments["data_handles"],
+                labels=arguments.get("labels"),
+                title=arguments.get("title"),
+                path=arguments.get("path"),
+                figsize=arguments.get("figsize"),
+                dpi=arguments.get("dpi"),
+                markers=arguments.get("markers"),
+                x_label=arguments.get("x_label"),
+                y_label=arguments.get("y_label"),
+                image_format=arguments.get("image_format", "png"),
+            )
 
         # -- Export / Persistence --------------------------------------------
         elif name == "export_code":
