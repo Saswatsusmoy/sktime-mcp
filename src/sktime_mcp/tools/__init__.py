@@ -64,9 +64,6 @@ __all__ = [
     "check_job_status_tool",
     "list_jobs_tool",
     "cancel_job_tool",
-<<<<<<< feature/plot-series
     "plot_series_tool",
-=======
     "run_command_tool",
->>>>>>> main
 ]

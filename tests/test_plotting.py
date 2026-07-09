@@ -3,17 +3,17 @@
 import base64
 import os
 import tempfile
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from sktime_mcp.runtime.executor import get_executor
 from sktime_mcp.tools.plotting import (
     _coerce_indices,
     _reconcile_labels,
     plot_series_tool,
 )
-from sktime_mcp.runtime.executor import get_executor
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -140,23 +140,23 @@ class TestPlotSeriesTool:
     def test_save_to_file(self):
         _register_series("s1", _make_airline_like())
         with tempfile.TemporaryDirectory() as tmpdir:
-            out_path = os.path.join(tmpdir, "test_plot.png")
+            out_path = Path(tmpdir) / "test_plot.png"
             result = plot_series_tool(
                 data_handles=["s1"],
-                path=out_path,
+                path=str(out_path),
             )
             assert result["success"] is True
-            assert result["path"] == out_path
-            assert os.path.exists(out_path)
-            assert os.path.getsize(out_path) > 0
+            assert result["path"] == str(out_path)
+            assert out_path.exists()
+            assert out_path.stat().st_size > 0
 
     def test_save_svg_format(self):
         _register_series("s1", _make_airline_like())
         with tempfile.TemporaryDirectory() as tmpdir:
-            out_path = os.path.join(tmpdir, "test_plot.svg")
+            out_path = Path(tmpdir) / "test_plot.svg"
             result = plot_series_tool(
                 data_handles=["s1"],
-                path=out_path,
+                path=str(out_path),
                 image_format="svg",
             )
             assert result["success"] is True
