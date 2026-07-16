@@ -54,7 +54,7 @@ def _get_index_frequency_metadata(
     fallback: str | None = None,
 ) -> str | None:
     """Return a stable frequency label for metadata without assuming datetime-only indexes."""
-    if isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
+    if isinstance(index, pd.DatetimeIndex | pd.PeriodIndex):
         freq = getattr(index, "freq", None)
         if freq is not None:
             return str(freq)
@@ -642,14 +642,13 @@ class Executor:
                 if isinstance(result, __import__("pandas").DataFrame) and isinstance(
                     result.columns, __import__("pandas").MultiIndex
                 ):
+                    result = result.copy()
                     result.columns = ["_".join(map(str, col)) for col in result.columns.values]
-                    sanitized = result.to_dict(orient="list")
+                    result = result.to_dict(orient="list")
                 else:
-                    sanitized = result.to_dict()
-            else:
-                sanitized = sanitize_for_json(result)
+                    result = result.to_dict()
 
-            return {"success": True, "result": sanitized}
+            return {"success": True, "result": sanitize_for_json(result)}
         except Exception as e:
             import traceback
 
@@ -1176,7 +1175,7 @@ class Executor:
         if auto_infer_freq:
             freq = getattr(y.index, "freq", None)
 
-            if freq is None and isinstance(y.index, (pd.DatetimeIndex, pd.PeriodIndex)):
+            if freq is None and isinstance(y.index, pd.DatetimeIndex | pd.PeriodIndex):
                 # Try to infer
                 freq = pd.infer_freq(y.index)
 
