@@ -39,54 +39,15 @@ def _validate_horizon(horizon: Any) -> dict[str, Any]:
 
 def fit_tool(
     estimator_handle: str,
-    X_dataset: str | None = None,
+    X_dataset: str | list[str] | None = None,
     y_dataset: str | None = None,
-    X_handle: str | None = None,
+    X_handle: str | list[str] | None = None,
     y_handle: str | None = None,
     fh: Any | None = None,
     run_async: bool = False,
 ) -> dict[str, Any]:
-    """
-    Fit an estimator on data.
-    """
+    """Fit an estimator. X_handle/X_dataset may be a list for multi-series X."""
     executor = get_executor()
-
-    # We must resolve y and X from the provided handles/datasets
-    X = None
-    y = None
-
-    if X_handle:
-        if X_handle not in executor._data_handles:
-            return {"success": False, "error": f"Unknown X data handle: {X_handle}"}
-        X = executor._data_handles[X_handle]["y"]  # 'y' stores the primary object
-
-    if y_handle:
-        if y_handle not in executor._data_handles:
-            return {"success": False, "error": f"Unknown y data handle: {y_handle}"}
-        y = executor._data_handles[y_handle]["y"]
-
-    if X_dataset and X_dataset == y_dataset:
-        data_res = executor.load_dataset(X_dataset)
-        if not data_res["success"]:
-            return data_res
-        if data_res.get("exog") is not None:
-            X = data_res["data"]
-            y = data_res["exog"]
-        else:
-            y = data_res["data"]
-            X = None
-    else:
-        if X_dataset:
-            data_res = executor.load_dataset(X_dataset)
-            if not data_res["success"]:
-                return data_res
-            X = data_res["data"]
-
-        if y_dataset:
-            data_res = executor.load_dataset(y_dataset)
-            if not data_res["success"]:
-                return data_res
-            y = data_res["data"]
 
     if run_async:
         import asyncio
@@ -121,7 +82,17 @@ def fit_tool(
         )
         job_manager.register_task(job_id, task)
         return {"success": True, "job_id": job_id, "status": "running"}
-    fit_result = executor.fit(estimator_handle, y=y, X=X, fh=fh)
+
+    resolved = executor._resolve_fit_inputs(
+        X_handle=X_handle,
+        y_handle=y_handle,
+        X_dataset=X_dataset,
+        y_dataset=y_dataset,
+    )
+    if not resolved["success"]:
+        return resolved
+
+    fit_result = executor.fit(estimator_handle, y=resolved["y"], X=resolved["X"], fh=fh)
 
     if fit_result.get("success") and y_dataset:
         try:

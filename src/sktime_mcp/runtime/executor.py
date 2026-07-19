@@ -49,12 +49,33 @@ def _get_demo_datasets() -> dict:
     return _DEMO_DATASETS
 
 
+def _as_frame(obj: Any) -> Any:
+    """Series → one-column DataFrame for df-list items."""
+    if isinstance(obj, pd.Series):
+        return obj.to_frame()
+    return obj
+
+
+def _is_single_series_table(obj: Any) -> bool:
+    """True for a lone Series or flat DataFrame (not a MultiIndex panel)."""
+    if isinstance(obj, pd.Series):
+        return True
+    return isinstance(obj, pd.DataFrame) and not isinstance(obj.index, pd.MultiIndex)
+
+
+_ALIGNER_NEED_LIST_MSG = (
+    "Aligners require multiple series as X, not a single series/table. "
+    "Pass X_handle or X_dataset as a list of at least two ids."
+)
+_X_LIST_MIN_MSG = "X as a list needs at least two series."
+
+
 def _get_index_frequency_metadata(
     index: pd.Index,
     fallback: str | None = None,
 ) -> str | None:
     """Return a stable frequency label for metadata without assuming datetime-only indexes."""
-    if isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
+    if isinstance(index, pd.DatetimeIndex | pd.PeriodIndex):
         freq = getattr(index, "freq", None)
         if freq is not None:
             return str(freq)
@@ -174,6 +195,98 @@ class Executor:
         if res["success"]:
             return {"success": True, "data": res["data"]}
         return res
+
+    def _resolve_x_slot(self, ref: str | list[str], *, kind: str) -> dict[str, Any]:
+        """Resolve X from a handle/dataset id, or a list of ids as df-list."""
+        if isinstance(ref, list):
+            if len(ref) < 2:
+                return {"success": False, "error": _X_LIST_MIN_MSG}
+            items: list[Any] = []
+            for item in ref:
+                if not isinstance(item, str):
+                    return {
+                        "success": False,
+                        "error": f"X list items must be strings, got {type(item).__name__}",
+                    }
+                if kind == "handle":
+                    if item not in self._data_handles:
+                        return {
+                            "success": False,
+                            "error": f"Unknown X data handle: {item}",
+                        }
+                    items.append(_as_frame(self._data_handles[item]["y"]))
+                else:
+                    data_res = self.load_dataset(item)
+                    if not data_res["success"]:
+                        return data_res
+                    items.append(_as_frame(data_res["data"]))
+            return {"success": True, "data": items}
+
+        if kind == "handle":
+            if ref not in self._data_handles:
+                return {"success": False, "error": f"Unknown X data handle: {ref}"}
+            return {"success": True, "data": self._data_handles[ref]["y"]}
+
+        data_res = self.load_dataset(ref)
+        if not data_res["success"]:
+            return data_res
+        return {"success": True, "data": data_res["data"]}
+
+    def _resolve_fit_inputs(
+        self,
+        X_handle: str | list[str] | None = None,
+        y_handle: str | None = None,
+        X_dataset: str | list[str] | None = None,
+        y_dataset: str | None = None,
+    ) -> dict[str, Any]:
+        """Resolve fit X/y from handles and demo dataset names."""
+        X: Any = None
+        y: Any = None
+
+        if X_handle is not None:
+            res = self._resolve_x_slot(X_handle, kind="handle")
+            if not res["success"]:
+                return res
+            X = res["data"]
+
+        if y_handle is not None:
+            if y_handle not in self._data_handles:
+                return {"success": False, "error": f"Unknown y data handle: {y_handle}"}
+            y = self._data_handles[y_handle]["y"]
+
+        if isinstance(X_dataset, list):
+            res = self._resolve_x_slot(X_dataset, kind="dataset")
+            if not res["success"]:
+                return res
+            X = res["data"]
+            if y_dataset:
+                data_res = self.load_dataset(y_dataset)
+                if not data_res["success"]:
+                    return data_res
+                y = data_res["data"]
+        elif X_dataset and X_dataset == y_dataset:
+            data_res = self.load_dataset(X_dataset)
+            if not data_res["success"]:
+                return data_res
+            if data_res.get("exog") is not None:
+                X = data_res["data"]
+                y = data_res["exog"]
+            else:
+                y = data_res["data"]
+                X = None
+        else:
+            if X_dataset:
+                res = self._resolve_x_slot(X_dataset, kind="dataset")
+                if not res["success"]:
+                    return res
+                X = res["data"]
+            if y_dataset:
+                data_res = self.load_dataset(y_dataset)
+                if not data_res["success"]:
+                    return data_res
+                y = data_res["data"]
+
+        return {"success": True, "X": X, "y": y}
 
     def instantiate(
         self,
@@ -353,6 +466,12 @@ class Executor:
                     instance.fit(X, y)
                 else:
                     instance.fit(X)
+            elif obj_type == "aligner":
+                # BaseAligner.fit(X, Z=None) - X is panel / df-list
+                panel = X if X is not None else y
+                if panel is None or _is_single_series_table(panel):
+                    return {"success": False, "error": _ALIGNER_NEED_LIST_MSG}
+                instance.fit(panel)
             else:
                 # Assume forecaster or similar default
                 if fh is not None:
@@ -616,23 +735,55 @@ class Executor:
         try:
             method = getattr(instance, method_name)
 
-            # Map data_handle and dataset from kwargs if they exist
-            # This allows the LLM to pass 'dataset': 'airline' and we inject the actual data
+            # Inject *_dataset / *_data_handle (str or list of str for multi-series X)
             for k, v in list(kwargs.items()):
-                if k.endswith("_dataset") and isinstance(v, str):
-                    data_res = self.load_dataset(v)
-                    if data_res.get("success"):
-                        # Replace the kwarg with the actual data (e.g. y_dataset -> y)
-                        actual_key = k.replace("_dataset", "")
-                        kwargs[actual_key] = data_res["data"]
+                if k.endswith("_dataset"):
+                    actual_key = k.replace("_dataset", "")
+                    if isinstance(v, list):
+                        if len(v) < 2:
+                            return {"success": False, "error": _X_LIST_MIN_MSG}
+                        items: list[Any] = []
+                        for name in v:
+                            data_res = self.load_dataset(name)
+                            if not data_res.get("success"):
+                                return {
+                                    "success": False,
+                                    "error": data_res.get(
+                                        "error", f"Failed to load dataset: {name}"
+                                    ),
+                                }
+                            items.append(_as_frame(data_res["data"]))
+                        kwargs[actual_key] = items
                         del kwargs[k]
-                elif k.endswith("_data_handle") and isinstance(v, str):
-                    if v in self._data_handles:
-                        actual_key = k.replace("_data_handle", "")
-                        kwargs[actual_key] = self._data_handles[v]["y"]
+                    elif isinstance(v, str):
+                        data_res = self.load_dataset(v)
+                        if data_res.get("success"):
+                            kwargs[actual_key] = data_res["data"]
+                            del kwargs[k]
+                elif k.endswith("_data_handle"):
+                    actual_key = k.replace("_data_handle", "")
+                    if isinstance(v, list):
+                        if len(v) < 2:
+                            return {"success": False, "error": _X_LIST_MIN_MSG}
+                        items = []
+                        for hid in v:
+                            if hid not in self._data_handles:
+                                return {
+                                    "success": False,
+                                    "error": f"Unknown data handle: {hid}",
+                                }
+                            items.append(_as_frame(self._data_handles[hid]["y"]))
+                        kwargs[actual_key] = items
                         del kwargs[k]
-                    else:
-                        return {"success": False, "error": f"Unknown data handle: {v}"}
+                    elif isinstance(v, str):
+                        if v in self._data_handles:
+                            kwargs[actual_key] = self._data_handles[v]["y"]
+                            del kwargs[k]
+                        else:
+                            return {
+                                "success": False,
+                                "error": f"Unknown data handle: {v}",
+                            }
 
             result = method(**kwargs)
 
@@ -706,9 +857,9 @@ class Executor:
     async def fit_async(
         self,
         handle_id: str,
-        X_dataset: str | None = None,
+        X_dataset: str | list[str] | None = None,
         y_dataset: str | None = None,
-        X_handle: str | None = None,
+        X_handle: str | list[str] | None = None,
         y_handle: str | None = None,
         fh: Any | None = None,
         job_id: str | None = None,
@@ -730,40 +881,16 @@ class Executor:
             )
             await asyncio.sleep(0.01)
 
-            X = None
-            y = None
-
-            if X_handle:
-                if X_handle not in self._data_handles:
-                    raise ValueError(f"Unknown X data handle: {X_handle}")
-                X = self._data_handles[X_handle]["y"]
-
-            if y_handle:
-                if y_handle not in self._data_handles:
-                    raise ValueError(f"Unknown y data handle: {y_handle}")
-                y = self._data_handles[y_handle]["y"]
-
-            if X_dataset and X_dataset == y_dataset:
-                data_res = self.load_dataset(X_dataset)
-                if not data_res["success"]:
-                    raise ValueError(data_res["error"])
-                if data_res.get("exog") is not None:
-                    X = data_res["data"]
-                    y = data_res["exog"]
-                else:
-                    y = data_res["data"]
-            else:
-                if X_dataset:
-                    data_res = self.load_dataset(X_dataset)
-                    if not data_res["success"]:
-                        raise ValueError(data_res["error"])
-                    X = data_res["data"]
-
-                if y_dataset:
-                    data_res = self.load_dataset(y_dataset)
-                    if not data_res["success"]:
-                        raise ValueError(data_res["error"])
-                    y = data_res["data"]
+            resolved = self._resolve_fit_inputs(
+                X_handle=X_handle,
+                y_handle=y_handle,
+                X_dataset=X_dataset,
+                y_dataset=y_dataset,
+            )
+            if not resolved["success"]:
+                raise ValueError(resolved["error"])
+            X = resolved["X"]
+            y = resolved["y"]
 
             # Step 2: Fit model
             self._job_manager.update_job(
@@ -786,7 +913,7 @@ class Executor:
             if not fit_result["success"]:
                 raise ValueError(fit_result["error"])
 
-            if X_dataset or y_dataset:
+            if y_dataset or (isinstance(X_dataset, str) and X_dataset):
                 try:
                     handle_info = self._handle_manager.get_info(handle_id)
                     handle_info.metadata["training_dataset"] = y_dataset or X_dataset
@@ -1176,7 +1303,7 @@ class Executor:
         if auto_infer_freq:
             freq = getattr(y.index, "freq", None)
 
-            if freq is None and isinstance(y.index, (pd.DatetimeIndex, pd.PeriodIndex)):
+            if freq is None and isinstance(y.index, pd.DatetimeIndex | pd.PeriodIndex):
                 # Try to infer
                 freq = pd.infer_freq(y.index)
 
