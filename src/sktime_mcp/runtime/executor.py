@@ -944,11 +944,16 @@ class Executor:
         try:
             method = getattr(instance, method_name)
 
-            # Inject *_dataset / *_data_handle (str or list of str for multi-series X)
+            # Inject *_dataset / *_data_handle (str, or list of str for multi-series X only)
             for k, v in list(kwargs.items()):
                 if k.endswith("_dataset"):
                     actual_key = k.replace("_dataset", "")
                     if isinstance(v, list):
+                        if actual_key != "X":
+                            return {
+                                "success": False,
+                                "error": "Only X accepts a list of dataset ids.",
+                            }
                         if len(v) < 2:
                             return {"success": False, "error": _X_LIST_MIN_MSG}
                         items: list[Any] = []
@@ -987,6 +992,11 @@ class Executor:
                 elif k.endswith("_data_handle"):
                     actual_key = k.replace("_data_handle", "")
                     if isinstance(v, list):
+                        if actual_key != "X":
+                            return {
+                                "success": False,
+                                "error": "Only X accepts a list of data handle ids.",
+                            }
                         if len(v) < 2:
                             return {"success": False, "error": _X_LIST_MIN_MSG}
                         items = []

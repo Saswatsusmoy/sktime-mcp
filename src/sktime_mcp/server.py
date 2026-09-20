@@ -337,14 +337,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "X_handle": {
                         "description": "Data handle for X, or list of handles for multi-series X",
-                        "anyOf": [
-                            {"type": "string"},
-                            {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "minItems": 2,
-                            },
-                        ],
+                        "type": ["string", "array"],
+                        "items": {"type": "string"},
+                        "minItems": 2,
                     },
                     "y_handle": {
                         "type": "string",
@@ -352,14 +347,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "X_dataset": {
                         "description": "Demo dataset name for X, or list of names for multi-series X",
-                        "anyOf": [
-                            {"type": "string"},
-                            {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "minItems": 2,
-                            },
-                        ],
+                        "type": ["string", "array"],
+                        "items": {"type": "string"},
+                        "minItems": 2,
                     },
                     "y_dataset": {
                         "type": "string",

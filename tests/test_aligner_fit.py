@@ -128,6 +128,26 @@ def test_aligner_call_method_list_too_short():
     assert "at least two" in out["error"]
 
 
+def test_call_method_y_data_handle_list_not_x_message():
+    """Non-X list kwargs must not get the X-specific min-length message."""
+    executor = get_executor()
+    h1, h2 = _two_airline_handles(executor)
+    r = instantiate_tool("NaiveForecaster()")
+    assert r["success"], r
+    try:
+        out = executor.call_method(r["handle"], "fit", {"y_data_handle": [h1]})
+        assert not out["success"]
+        assert "Only X accepts" in out["error"]
+        assert "at least two" not in out["error"]
+        out2 = executor.call_method(r["handle"], "fit", {"y_data_handle": [h1, h2]})
+        assert not out2["success"]
+        assert "Only X accepts" in out2["error"]
+    finally:
+        executor._data_handles.pop(h1, None)
+        executor._data_handles.pop(h2, None)
+        executor._handle_manager.release_handle(r["handle"])
+
+
 def test_forecaster_fit_string_y_dataset():
     """Single-string y_dataset for forecasters is unchanged."""
     r = instantiate_tool("NaiveForecaster()")
